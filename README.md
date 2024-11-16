@@ -36,10 +36,10 @@ CONTENT_SECURITY_POLICY_DIRECTIVES__FRAME_SRC="docs.google.com"
 # DEMO
 
 ## Interface
-./Interface.png
+![Interface](./screenshot/Interface.png)
 
 ## View in Edit or Create
-./EditOrCreateView.png
+![View in Edit or Create](./screenshot/EditOrCreateView.png)
 
 ## Preview Dialog
-./PreviewDialogFull.png
+![Preview Dialog](./screenshot/PreviewDialogFull.png)
