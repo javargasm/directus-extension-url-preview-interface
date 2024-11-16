@@ -1,8 +1,8 @@
 {
   "name": "directus-extension-url-preview-interface",
-  "description": "Document or Page preview for url internal or external",
+  "description": "Document or Page preview for url external",
   "icon": "extension",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "keywords": [
     "directus",
     "directus-extension",
@@ -17,6 +17,12 @@
     "path": "dist/index.js",
     "source": "src/index.ts",
     "host": "^10.10.0"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/javargasm/directus-extension-url-preview-interface#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/javargasm/directus-extension-url-preview-interface"
   },
   "scripts": {
     "build": "directus-extension build",
