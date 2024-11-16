@@ -32,3 +32,14 @@ https://docs.directus.io/extensions/installing-extensions.html
 ```
 CONTENT_SECURITY_POLICY_DIRECTIVES__FRAME_SRC="docs.google.com"
 ```
+
+# DEMO
+
+## Interface
+./Interface.png
+
+## View in Edit or Create
+./EditOrCreateView.png
+
+## Preview Dialog
+./PreviewDialogFull.png
