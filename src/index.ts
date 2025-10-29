@@ -88,5 +88,18 @@ export default defineInterface({
         ],
       },
     },
+    {
+      field: "viewDebug",
+      name: "View Debug Info",
+      type: "boolean",
+      meta: {
+        width: "full",
+        interface: "boolean",
+        note: "Show debug info below the iframe",
+      },
+      schema: {
+        default_value: false,
+      },
+    },
   ],
 });

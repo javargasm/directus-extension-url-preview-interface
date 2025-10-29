@@ -2,7 +2,7 @@
   "name": "directus-extension-url-preview-interface",
   "description": "Document or Page preview for url external",
   "icon": "extension",
-  "version": "1.0.2",
+  "version": "1.0.6",
   "keywords": [
     "directus",
     "directus-extension",
@@ -16,7 +16,7 @@
     "type": "interface",
     "path": "dist/index.js",
     "source": "src/index.ts",
-    "host": "^11.3.0"
+    "host": "^11.3.2"
   },
   "license": "MIT",
   "homepage": "https://github.com/javargasm/directus-extension-url-preview-interface#readme",
