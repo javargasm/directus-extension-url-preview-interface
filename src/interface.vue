@@ -28,8 +28,9 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, computed, ref, inject, ComputedRef, toRefs } from "vue";
-import { useCollection, useStores } from '@directus/extensions-sdk';
+import { defineComponent, computed, ref, inject, ComputedRef, toRefs, onMounted } from "vue";
+import { useApi, useStores } from '@directus/extensions-sdk';
+import { useCollection } from '@directus/extensions-sdk';
 import { useDeepValues, useCollectionRelations } from './utils';
 
 export default defineComponent({
@@ -74,87 +75,103 @@ export default defineComponent({
     const heightIframe = computed(() => props.heightiframe);
     const previewEdit = computed(() => props.viewiframe);
 
-    // Obtener valores por defecto de la colección
+    // API y stores
+    const api = useApi();
+    const { useUserStore } = useStores();
+    const userStore = useUserStore();
+
+    // Valores inyectados y relaciones
+    const injectedValues = inject<ComputedRef<Record<string, any>>>('values');
+    const relations = useCollectionRelations(props.collection);
+    const { collection, field, primaryKey } = toRefs(props);
     const defaultValues = useCollection(props.collection).defaults;
 
-    // Obtener las relaciones de la colección
-    const relations = useCollectionRelations(props.collection);
-
-    // Convertir props a refs para pasarlas a useDeepValues
-    const { collection, field, primaryKey } = toRefs(props);
-
-    // Obtener valores inyectados del contexto de Directus
-    const injectedValues = inject<ComputedRef<Record<string, any>>>('values');
-
-    // Usar useDeepValues para obtener todos los valores incluyendo relaciones
     const values = injectedValues ? useDeepValues(
       injectedValues,
       relations,
       collection,
       field,
       primaryKey,
-      props.url // usar url como template
+      props.url
     ) : ref({});
 
-    // Obtener el store de usuarios
-    const { useUserStore } = useStores();
-    const userStore = useUserStore();
+    // ✅ Token obtenido del endpoint personalizado
+    const sessionToken = ref('');
+    const tokenLoading = ref(true);
 
-    if (props.viewDebug) {
-      console.log("Initial Props:", JSON.stringify(props, null, 2));
-      console.log("Default Values:", defaultValues.value);
-      console.log("Relations:", relations.value);
-    }
+    // Función para obtener el token desde el endpoint
+    const fetchSessionToken = async () => {
+      try {
+        if (props.viewDebug) {
+          console.log("🔄 Fetching session token from endpoint...");
+        }
 
-    // Obtener el token del usuario actual
-    const userToken = computed(() => {
-      const currentUser = (values.value as Record<string, any>)?.__currentUser || userStore?.currentUser;
+        // Llamar al endpoint personalizado que lee la cookie httpOnly
+        const response = await api.get('/session-token');
 
-      if (props.viewDebug) {
-        console.log("Current User:", currentUser);
+        sessionToken.value = response.data.token;
+        tokenLoading.value = false;
+
+        if (props.viewDebug) {
+          console.log("✅ Session token obtained successfully");
+          console.log("Token length:", sessionToken.value?.length);
+          console.log("Token preview:", sessionToken.value?.substring(0, 30) + '...');
+          console.log("Token expires:", response.data.expires);
+        }
+      } catch (error) {
+        console.error("❌ Error fetching session token:", error);
+        tokenLoading.value = false;
+
+        if (props.viewDebug) {
+          console.error("Error details:", error);
+        }
       }
+    };
 
-      // Intentar obtener el token del usuario actual
-      return currentUser?.token || '';
+    // Obtener el token al montar el componente
+    onMounted(() => {
+      fetchSessionToken();
     });
 
     const processedUrl = computed(() => {
       if (!props.url) return "";
+      if (tokenLoading.value) return ""; // Esperar a que el token se cargue
 
       let url = props.url;
-      const allValues: Record<string, any> = { ...defaultValues.value, ...values.value };
+      const allValues = { ...defaultValues.value, ...values.value };
 
       if (props.viewDebug) {
+        console.log("🔍 Processing URL");
         console.log("All Values:", allValues);
-        console.log("User Token:", userToken.value);
+        console.log("Session Token available:", !!sessionToken.value);
       }
 
       // Reemplazar todos los placeholders {{key}}
       url = url.replace(/\{\{([^}]+)\}\}/g, (match, key) => {
         const trimmedKey = key.trim();
 
-        // Casos especiales
         if (trimmedKey === 'id') {
           return String(props.primaryKey || allValues.id || '');
         }
 
-        if (trimmedKey === 'token') {
-          return userToken.value || '';
+        // ✅ Reemplazar token con el session token
+        if (trimmedKey === 'token' || trimmedKey === 'access_token') {
+          return sessionToken.value || '';
         }
 
-        // Buscar en valores usando path (ej: user.name)
+        // Soportar paths anidados (ej: user.name)
         if (trimmedKey.includes('.')) {
           const parts = trimmedKey.split('.');
           let value = allValues;
 
           for (const part of parts) {
             if (value && typeof value === 'object' && part in value) {
-              value = (value as Record<string, any>)[part];
+              value = value[part];
             } else {
               if (props.viewDebug) {
-                console.warn(`Path not found: ${trimmedKey}`);
+                console.warn(`⚠️ Path not found: ${trimmedKey}`);
               }
-              return match;
+              return '';
             }
           }
 
@@ -168,14 +185,14 @@ export default defineComponent({
         }
 
         if (props.viewDebug) {
-          console.warn(`Placeholder not found: ${trimmedKey}`);
+          console.warn(`⚠️ Placeholder not found: ${trimmedKey}`);
         }
 
-        return match;
+        return '';
       });
 
       if (props.viewDebug) {
-        console.log("Processed URL:", url);
+        console.log("📝 Processed URL:", url);
       }
 
       // Verificar si es un archivo de Office
@@ -186,16 +203,12 @@ export default defineComponent({
         const officeExtensions = ['.docx', '.xlsx', '.pptx', '.doc', '.xls', '.ppt'];
         const isOfficeFile = officeExtensions.some(ext => lowerFilename.endsWith(ext));
 
-        if (props.viewDebug) {
-          console.log("Filename Disk:", filenameDisk);
-          console.log("Is Office File:", isOfficeFile);
-        }
-
         if (isOfficeFile) {
           const encodedUrl = encodeURIComponent(url);
           const finalUrl = `https://view.officeapps.live.com/op/embed.aspx?src=${encodedUrl}`;
 
           if (props.viewDebug) {
+            console.log("📄 Office file detected");
             console.log("Final Office URL:", finalUrl);
           }
 
@@ -214,8 +227,11 @@ export default defineComponent({
       previewEdit,
       widthIframe,
       heightIframe,
+      sessionToken, // Para debug
+      tokenLoading,
     };
   },
+
   methods: {
     refreshIframe() {
       const iframe = this.$refs.iframe as HTMLIFrameElement;
