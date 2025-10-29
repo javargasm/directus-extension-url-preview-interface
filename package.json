@@ -2,7 +2,7 @@
   "name": "directus-extension-url-preview-interface",
   "description": "Document or Page preview for url external",
   "icon": "extension",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "keywords": [
     "directus",
     "directus-extension",
@@ -14,7 +14,7 @@
   ],
   "directus:extension": {
     "type": "interface",
-    "path": "dist/index.js",
+    "path": "index.js",
     "source": "src/index.ts",
     "host": "^11.3.2"
   },
