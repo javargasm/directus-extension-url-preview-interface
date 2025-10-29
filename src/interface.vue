@@ -1,16 +1,16 @@
 <template>
   <div v-if="previewEdit">
-    <iframe :src="src" @load="handleIframeLoad" :width="widthIframe ?? '100%'" :height="heightIframe"
+    <iframe :src="processedUrl" @load="handleIframeLoad" :width="widthIframe ?? '100%'" :height="heightIframe"
       title="view"></iframe>
   </div>
   <span class="preview-container">
     <p class="preview-ext" @click.stop="previewDrawerActive = true">Preview</p>
-    <a :href="src" target="_blank" rel="noopener noreferrer">
+    <a :href="processedUrl" target="_blank" rel="noopener noreferrer">
       <v-icon v-tooltip="'Open in new tab'" name="open_in_new" class="preview-icon small" />
     </a>
   </span>
 
-  <v-dialog v-if="src" v-model="previewDrawerActive" @esc="previewDrawerActive = false">
+  <v-dialog v-if="processedUrl" v-model="previewDrawerActive" @esc="previewDrawerActive = false">
 
     <div class="content-iframe">
       <span v-if="loading" class="loader"></span>
@@ -24,7 +24,7 @@
         </v-button>
       </div>
 
-      <iframe class="doc" :src="src" @load="handleIframeLoad" ref="iframe" title="view"></iframe>
+      <iframe class="doc" :src="processedUrl" @load="handleIframeLoad" ref="iframe" title="view"></iframe>
     </div>
 
   </v-dialog>
@@ -52,20 +52,46 @@ export default defineComponent({
       type: Boolean,
       default: false,
     },
+    primaryKey: {
+      type: [String, Number],
+      default: null,
+    },
+    values: {
+      type: Object,
+      default: () => ({}),
+    },
   },
   setup(props) {
     const loading = ref(true);
     const previewDrawerActive = ref(false);
-    const url = props.url;
     const widthIframe = computed(() => props.widthiframe);
     const heightIframe = computed(() => props.heightiframe);
     const previewEdit = computed(() => props.viewiframe);
+
+    const processedUrl = computed(() => {
+      if (!props.url) return "";
+
+      let url = props.url;
+
+      if (props.primaryKey) {
+        url = url.replace(/\{\{id\}\}/g, String(props.primaryKey));
+      }
+
+      Object.keys(props.values || {}).forEach(key => {
+        const placeholder = new RegExp(`\\{\\{${key}\\}\\}`, 'g');
+        url = url.replace(placeholder, props.values[key] || '');
+      });
+
+      return url;
+    });
+
     watch(previewDrawerActive, (newVal) => {
       console.log("Dialog Active:", newVal);
     });
+
     return {
       previewDrawerActive,
-      src: url,
+      processedUrl,
       title: "Preview",
       loading,
       previewEdit,
@@ -78,7 +104,7 @@ export default defineComponent({
       const iframe = this.$refs.iframe as HTMLIFrameElement;
       if (iframe) {
         this.loading = true;
-        iframe.src = iframe.src; // Reload the iframe
+        iframe.src = iframe.src;
       }
     },
     handleIframeLoad() {
