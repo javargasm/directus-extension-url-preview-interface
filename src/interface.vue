@@ -28,8 +28,9 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, computed, watch, ref, inject, ComputedRef, toRefs } from "vue";
+import { defineComponent, computed, ref, inject, ComputedRef, toRefs } from "vue";
 import { useCollection, useStores } from '@directus/extensions-sdk';
+import { useDeepValues, useCollectionRelations } from './utils';
 
 export default defineComponent({
   props: {
@@ -73,108 +74,104 @@ export default defineComponent({
     const heightIframe = computed(() => props.heightiframe);
     const previewEdit = computed(() => props.viewiframe);
 
+    // Obtener valores por defecto de la colección
+    const defaultValues = useCollection(props.collection).defaults;
+
+    // Obtener las relaciones de la colección
+    const relations = useCollectionRelations(props.collection);
+
+    // Convertir props a refs para pasarlas a useDeepValues
+    const { collection, field, primaryKey } = toRefs(props);
+
     // Obtener valores inyectados del contexto de Directus
-    const values = inject<ComputedRef<Record<string, any>>>('values', computed(() => ({})));
+    const injectedValues = inject<ComputedRef<Record<string, any>>>('values');
 
-    // Obtener información de la colección
-    const { defaults } = useCollection(props.collection);
+    // Usar useDeepValues para obtener todos los valores incluyendo relaciones
+    const values = injectedValues ? useDeepValues(
+      injectedValues,
+      relations,
+      collection,
+      field,
+      primaryKey,
+      props.url // usar url como template
+    ) : ref({});
 
-    // Obtener el store de usuarios para acceder al token
+    // Obtener el store de usuarios
     const { useUserStore } = useStores();
     const userStore = useUserStore();
 
     if (props.viewDebug) {
       console.log("Initial Props:", JSON.stringify(props, null, 2));
-      console.log("Injected Values:", values.value);
+      console.log("Default Values:", defaultValues.value);
+      console.log("Relations:", relations.value);
     }
 
-    // Obtener el token del store de usuario
+    // Obtener el token del usuario actual
     const userToken = computed(() => {
-      // Intenta obtener el token del store
-      const token = userStore?.currentUser?.token || userStore?.accessToken;
-
-      if (!token) {
-        // Fallback: intentar obtener de localStorage
-        const localToken = localStorage.getItem('directus_token') ||
-          localStorage.getItem('auth_token');
-        if (localToken) return localToken;
-
-        // Último fallback: cookies
-        return getTokenFromCookie();
-      }
-
-      return token;
-    });
-
-    // Función fallback para obtener token de cookies
-    const getTokenFromCookie = (): string => {
-      // Intentar diferentes nombres de cookies comunes de Directus
-      const cookieNames = [
-        'directus_session_token',
-        'directus_refresh_token',
-        'auth_token',
-        'access_token'
-      ];
-
-      const cookies = document.cookie.split(';');
-
-      for (const cookieName of cookieNames) {
-        for (const cookie of cookies) {
-          const [name, value] = cookie.trim().split('=');
-          if (name === cookieName && value) {
-            if (props.viewDebug) {
-              console.log(`Token encontrado en cookie: ${cookieName}`);
-            }
-            return decodeURIComponent(value);
-          }
-        }
-      }
+      const currentUser = (values.value as Record<string, any>)?.__currentUser || userStore?.currentUser;
 
       if (props.viewDebug) {
-        console.warn("No se encontró token en ninguna cookie");
+        console.log("Current User:", currentUser);
       }
-      return '';
-    };
 
-    if (props.viewDebug) {
-      console.log("User Token:", userToken.value);
-    }
+      // Intentar obtener el token del usuario actual
+      return currentUser?.token || '';
+    });
 
     const processedUrl = computed(() => {
       if (!props.url) return "";
 
       let url = props.url;
-
-      // Reemplazar placeholders con valores inyectados
-      const allValues = { ...defaults.value, ...values.value };
+      const allValues: Record<string, any> = { ...defaultValues.value, ...values.value };
 
       if (props.viewDebug) {
         console.log("All Values:", allValues);
+        console.log("User Token:", userToken.value);
       }
 
-      // Usar regex para encontrar todos los placeholders {{key}}
+      // Reemplazar todos los placeholders {{key}}
       url = url.replace(/\{\{([^}]+)\}\}/g, (match, key) => {
         const trimmedKey = key.trim();
 
-        if (trimmedKey === 'id' && props.primaryKey) {
-          return String(props.primaryKey);
+        // Casos especiales
+        if (trimmedKey === 'id') {
+          return String(props.primaryKey || allValues.id || '');
         }
 
-        if (trimmedKey === 'token' && userToken.value) {
-          return userToken.value;
+        if (trimmedKey === 'token') {
+          return userToken.value || '';
         }
 
-        // Buscar en los valores inyectados
+        // Buscar en valores usando path (ej: user.name)
+        if (trimmedKey.includes('.')) {
+          const parts = trimmedKey.split('.');
+          let value = allValues;
+
+          for (const part of parts) {
+            if (value && typeof value === 'object' && part in value) {
+              value = (value as Record<string, any>)[part];
+            } else {
+              if (props.viewDebug) {
+                console.warn(`Path not found: ${trimmedKey}`);
+              }
+              return match;
+            }
+          }
+
+          return value !== undefined && value !== null ? String(value) : '';
+        }
+
+        // Buscar valor directo
         const value = allValues[trimmedKey];
         if (value !== undefined && value !== null) {
           return String(value);
         }
 
         if (props.viewDebug) {
-          console.warn(`Placeholder no encontrado: ${trimmedKey}`);
+          console.warn(`Placeholder not found: ${trimmedKey}`);
         }
 
-        return match; // Devolver el placeholder original si no se encuentra
+        return match;
       });
 
       if (props.viewDebug) {
@@ -183,35 +180,30 @@ export default defineComponent({
 
       // Verificar si es un archivo de Office
       const filenameDisk = allValues?.filename_disk;
+
       if (filenameDisk && typeof filenameDisk === 'string') {
         const lowerFilename = filenameDisk.toLowerCase();
         const officeExtensions = ['.docx', '.xlsx', '.pptx', '.doc', '.xls', '.ppt'];
         const isOfficeFile = officeExtensions.some(ext => lowerFilename.endsWith(ext));
 
+        if (props.viewDebug) {
+          console.log("Filename Disk:", filenameDisk);
+          console.log("Is Office File:", isOfficeFile);
+        }
+
         if (isOfficeFile) {
           const encodedUrl = encodeURIComponent(url);
           const finalUrl = `https://view.officeapps.live.com/op/embed.aspx?src=${encodedUrl}`;
+
           if (props.viewDebug) {
             console.log("Final Office URL:", finalUrl);
           }
+
           return finalUrl;
         }
       }
 
       return url;
-    });
-
-    // Watch para debug
-    watch(values, (newValues) => {
-      if (props.viewDebug) {
-        console.log("Values changed:", newValues);
-      }
-    }, { deep: true });
-
-    watch(previewDrawerActive, (newVal) => {
-      if (props.viewDebug) {
-        console.log("Dialog Active:", newVal);
-      }
     });
 
     return {
@@ -240,7 +232,6 @@ export default defineComponent({
 </script>
 
 <style scoped>
-/* Add your styles here if needed */
 
 .content-iframe {
   width: 100%;
@@ -271,44 +262,41 @@ export default defineComponent({
 
   &:hover {
     --v-icon-color: var(--theme--form--field--input--foreground);
-    }
   }
+}
 
-  .doc {
-    width: 100%;
-    height: 100vh;
-  }
+.doc {
+  width: 100%;
+  height: 100vh;
+}
 
-  .loader {
-    width: 16px;
-    height: 16px;
-    border-radius: 50%;
-    display: block;
-    margin: 15px auto;
-    position: relative;
+.loader {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  display: block;
+  margin: 15px auto;
+  position: relative;
+  background: #fff;
+  box-shadow: -24px 0 #fff, 24px 0 #fff;
+  box-sizing: border-box;
+  animation: shadowPulse 2s linear infinite;
+}
+
+@keyframes shadowPulse {
+  33% {
     background: #fff;
-    box-shadow: -24px 0 #fff,
-    24px 0 #fff;
-    box-sizing: border-box;
-    animation: shadowPulse 2s linear infinite;
+    box-shadow: -24px 0 var(--project-color), 24px 0 #fff;
   }
 
-  @keyframes shadowPulse {
-    33% {
-      background: #fff;
-      box-shadow: -24px 0 var(--project-color),
-      24px 0 #fff;
-    }
+  66% {
+    background: var(--project-color);
+    box-shadow: -24px 0 #fff, 24px 0 #fff;
+  }
 
-    66% {
-      background: var(--project-color);
-      box-shadow: -24px 0 #fff,
-      24px 0 #fff;
-    }
-
-    100% {
-      background: #fff;
-      box-shadow: -24px 0 #fff,
-      24px 0 var(--project-color);
-    }
-  }</style>
+  100% {
+    background: #fff;
+    box-shadow: -24px 0 #fff, 24px 0 var(--project-color);
+  }
+}
+</style>

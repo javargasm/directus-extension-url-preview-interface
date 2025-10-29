@@ -2,7 +2,7 @@
   "name": "directus-extension-url-preview-interface",
   "description": "Document or Page preview for url external",
   "icon": "extension",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "keywords": [
     "directus",
     "directus-extension",
@@ -31,6 +31,7 @@
   },
   "devDependencies": {
     "@directus/extensions-sdk": "^10.1.0",
+    "@directus/shared": "^9.24.0",
     "tailwindcss": "^3.4.3",
     "typescript": "^5.4.5",
     "vue": "^3.4.27"
